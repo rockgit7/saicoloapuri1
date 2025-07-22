@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3Dさいころアプリ (完成版)</title>
+    
+    <style>
+        /* ===== CSS ここから ===== */
+        
+        /* 基本スタイル */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* スクロールが出ても中央揃えを維持 */
+            margin: 0;
+            padding: 20px 0;
+            box-sizing: border-box;
+            background-color: #2c3e50; /* 濃い背景色 */
+            color: white;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        /* サイコロを横に並べるためのラッパー */
+        .dice-wrapper {
+            display: flex;
+            gap: 40px; /* サイコロ間のスペース */
+            margin-bottom: 20px;
+            justify-content: center; /* 中央揃えにする */
+            flex-wrap: wrap; /* 画面幅が足りなければ折り返す */
+            max-width: 500px; /* 横に広がりすぎないように最大幅を指定 */
+            padding: 0 20px; /* スマホ表示で左右に余白 */
+        }
+
+        /* 3D空間のコンテナ */
+        .scene {
+            width: 100px;
+            height: 100px;
+            perspective: 600px; /* 遠近感の強さ。数値が小さいほど強い */
+        }
+
+        /* サイコロ本体 */
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d; /* 子要素の3D変形を有効にする */
+            transition: transform 2s ease-out; /* 回転アニメーションを2秒かけて行う */
+        }
+
+        /* ストップボタンが押されたとき用の、短いアニメーションクラス */
+        .cube.is-stopping {
+            transition: transform 0.2s ease-out; /* 0.2秒でピタッと止まる */
+        }
+
+
+        /* サイコロの各面（共通スタイル） */
+        .cube__face {
+            position: absolute; /* これが重要！親要素を基準に配置 */
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 2px solid #333;
+            border-radius: 8px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        /* --- ここから各面を3D空間に配置 --- */
+        /* サイコロの大きさ(100px)の半分の値(50px)で移動させるのがポイント */
+        .cube__face--1 { transform: rotateX(0deg)    rotateY(0deg)   translateZ(50px); }
+        .cube__face--2 { transform: rotateX(-90deg)   rotateY(0deg)   translateZ(50px); } /* 修正：上面が2になるように調整 */
+        .cube__face--3 { transform: rotateX(0deg)    rotateY(90deg)  translateZ(50px); } /* 修正：右面が3になるように調整 */
+        .cube__face--4 { transform: rotateX(0deg)    rotateY(-90deg)  translateZ(50px); }/* 修正：左面が4になるように調整 */
+        .cube__face--5 { transform: rotateX(90deg)  rotateY(0deg)   translateZ(50px); }  /* 修正：下面が5になるように調整 */
+        .cube__face--6 { transform: rotateX(0deg)    rotateY(180deg)  translateZ(50px); }
+
+        /* --- サイコロの目のデザイン --- */
+        .dot {
+            display: block;
+            width: 20px;
+            height: 20px;
+            background-color: #333;
+            border-radius: 50%; /* 円にする */
+        }
+
+        /* 目のレイアウト調整（Flexboxを使用） */
+        .cube__face--2 { justify-content: space-between; }
+        .cube__face--2 .dot:nth-child(2) { align-self: flex-end; }
+        .cube__face--3 { justify-content: space-between; }
+        .cube__face--3 .dot:nth-child(2) { align-self: center; }
+        .cube__face--3 .dot:nth-child(1) { align-self: flex-start; }
+        .cube__face--3 .dot:nth-child(3) { align-self: flex-end; }
+        .cube__face--4, .cube__face--5, .cube__face--6 { flex-direction: row; }
+        .cube__face .column { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
+        .cube__face--5 .column:nth-child(2) { justify-content: center; }
+
+
+        /* ボタンを横並びにするラッパー */
+        .button-wrapper {
+            display: flex;
+            gap: 20px; /* ボタン間のスペース */
+            margin-top: 30px;
+        }
+
+        /* ボタンの共通スタイル */
+        #roll-button, #stop-button {
+            padding: 15px 30px;
+            font-size: 20px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+
+        #roll-button:hover, #stop-button:hover {
+            transform: translateY(-2px);
+        }
+
+        #roll-button:disabled {
+            background-color: #7f8c8d; /* 無効化されたときの色 */
+            cursor: not-allowed;
+            transform: translateY(0);
+        }
+
+        /* サイコロを振るボタン */
+        #roll-button {
+            background-color: #e74c3c;
+        }
+
+        #roll-button:hover:not(:disabled) {
+            background-color: #c0392b;
+        }
+
+        /* ストップボタン */
+        #stop-button {
+            background-color: #f39c12; /* オレンジ系の色 */
+        }
+
+        #stop-button:hover {
+            background-color: #e67e22;
+        }
+
+
+        /* 要素を非表示にするための汎用クラス */
+        .hidden {
+            display: none !important;
+        }
+
+        /* 結果表示エリアのスタイル */
+        #result-display {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 24px;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 15px 30px;
+            border-radius: 10px;
+            min-width: 250px;
+        }
+        #result-display p {
+            margin: 5px 0;
+        }
+
+        /* ===== CSS ここまで ===== */
+    </style>
+</head>
+<body>
+
+    <h1>3Dさいころアプリ</h1>
+
+    <!-- 3つのサイコロをまとめるラッパー -->
+    <div class="dice-wrapper">
+        <!-- 1つ目のサイコロ -->
+        <div class="scene">
+            <div class="cube">
+                <div class="cube__face cube__face--1"><span class="dot"></span></div>
+                <div class="cube__face cube__face--2"><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--3"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--4"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--5"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--6"><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+            </div>
+        </div>
+        <!-- 2つ目のサイコロ -->
+        <div class="scene">
+            <div class="cube">
+                <div class="cube__face cube__face--1"><span class="dot"></span></div>
+                <div class="cube__face cube__face--2"><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--3"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--4"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--5"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--6"><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+            </div>
+        </div>
+        <!-- 3つ目のサイコロ -->
+        <div class="scene">
+            <div class="cube">
+                <div class="cube__face cube__face--1"><span class="dot"></span></div>
+                <div class="cube__face cube__face--2"><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--3"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+                <div class="cube__face cube__face--4"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--5"><div class="column"><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="cube__face cube__face--6"><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="column"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ボタンをまとめるラッパー -->
+    <div class="button-wrapper">
+        <button id="roll-button">サイコロを振る</button>
+        <button id="stop-button" class="hidden">ストップ！</button>
+    </div>
+
+    <!-- 結果を表示するエリア -->
+    <div id="result-display">
+        <p>出た目: <span id="dice-values">? + ? + ?</span></p>
+        <p>合計: <span id="total-value">?</span></p>
+    </div>
+    
+    <script>
+        // ===== JavaScript ここから =====
+        
+        // HTMLの要素をすべて取得
+        const cubes = document.querySelectorAll('.cube');
+        const rollButton = document.getElementById('roll-button');
+        const stopButton = document.getElementById('stop-button');
+        const diceValuesEl = document.getElementById('dice-values');
+        const totalValueEl = document.getElementById('total-value');
+
+        // 各出目に対応するサイコロの角度を定義
+        // CSSのtransformと一致するように調整
+        const rotations = {
+            1: 'rotateX(0deg) rotateY(0deg)',
+            2: 'rotateX(90deg) rotateY(0deg)', // CSSに合わせて変更
+            3: 'rotateX(0deg) rotateY(-90deg)',// CSSに合わせて変更
+            4: 'rotateX(0deg) rotateY(90deg)', // CSSに合わせて変更
+            5: 'rotateX(-90deg) rotateY(0deg)',// CSSに合わせて変更
+            6: 'rotateX(0deg) rotateY(180deg)'
+        };
+
+        // グローバルに変数を準備
+        let animationTimer = null;
+        let currentResults = [];
+
+        // 「サイコロを振る」ボタンがクリックされたときの処理
+        rollButton.addEventListener('click', () => {
+            rollButton.disabled = true;
+            stopButton.classList.remove('hidden');
+
+            currentResults = [];
+            let total = 0;
+
+            cubes.forEach((cube) => {
+                cube.classList.remove('is-stopping'); // is-stoppingクラスをリセット
+                const result = Math.floor(Math.random() * 6) + 1;
+                currentResults.push(result);
+                total += result;
+                rollDice(cube, result);
+            });
+
+            // 2秒後に結果を表示するタイマーをセット
+            animationTimer = setTimeout(() => {
+                showResults(currentResults, total);
+                // タイマーが完了したらnullに戻す
+                animationTimer = null;
+            }, 2000);
+        });
+
+        // 「ストップ！」ボタンがクリックされたときの処理
+        stopButton.addEventListener('click', () => {
+            // タイマーが作動中の場合のみクリア
+            if (animationTimer) {
+                clearTimeout(animationTimer);
+                animationTimer = null;
+            }
+
+            // 全てのサイコロに対して、停止処理を行う
+            cubes.forEach((cube, index) => {
+                // 1. 「高速停止」クラスを追加して、アニメーションを0.2秒に短縮
+                cube.classList.add('is-stopping');
+
+                // 2. このサイコロの最終的な出目を取得
+                const finalResult = currentResults[index];
+
+                // 3. "たくさん回転する"情報を取り除き、"最終的な角度"だけを取得
+                const finalRotation = rotations[finalResult];
+
+                // 4. transformの値を最終的な角度で上書きし、高速停止アニメーションを開始
+                cube.style.transform = finalRotation;
+            });
+
+            // 5. 合計値を計算して、結果を表示
+            const total = currentResults.reduce((sum, val) => sum + val, 0);
+            showResults(currentResults, total);
+        });
+
+
+        /**
+         * サイコロを指定された出目に向かって回転させる関数
+         */
+        function rollDice(cubeElement, result) {
+            // ランダムに360度の倍数で余分に回転させる（4〜7回転）
+            const randomX = (Math.floor(Math.random() * 4) + 4) * 360;
+            const randomY = (Math.floor(Math.random() * 4) + 4) * 360;
+            
+            // 最終的に止まる角度を取得
+            const finalRotation = rotations[result];
+
+            // 余分な回転と最終的な角度を組み合わせてtransformプロパティに設定
+            cubeElement.style.transform = `rotateX(${randomX}deg) rotateY(${randomY}deg) ${finalRotation}`;
+        }
+
+        /**
+         * 結果を表示し、ボタンの状態をリセットする関数
+         */
+        function showResults(results, total) {
+            diceValuesEl.textContent = results.join(' + ');
+            totalValueEl.textContent = total;
+            rollButton.disabled = false;
+            stopButton.classList.add('hidden');
+        }
+
+        /**
+         * ページ読み込み時にサイコロを初期位置にセットする関数
+         */
+        function initializeDice() {
+            // ストップボタンは最初は非表示
+            stopButton.classList.add('hidden');
+
+            const initialValues = [];
+            let total = 0;
+            cubes.forEach(cube => {
+                cube.classList.add('is-stopping'); // 短いアニメーションで初期化
+                const initialResult = 1;
+                const finalRotation = rotations[initialResult];
+                cube.style.transform = finalRotation; // 1の目で静止
+                initialValues.push(initialResult);
+                total += initialResult;
+            });
+
+            // 少し遅れて結果表示エリアを更新
+            setTimeout(() => {
+                showResults(initialValues, total);
+            }, 200); // 0.2秒後に表示
+        }
+
+        // ページが読み込まれたら、初期化関数を実行
+        initializeDice();
+        
+        // ===== JavaScript ここまで =====
+    </script>
+</body>
+</html>
